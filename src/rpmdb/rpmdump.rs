@@ -18,7 +18,7 @@ pub fn get_rpm_dump(rpm: &OsStr, rpm_elem: usize) -> Result<Vec<RpmFile>, Box<dy
     // Successful?
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        println!("{}", stderr);
+        eprintln!("{}", stderr);
         Err(format!(
             "rpm package dump for {} returned {}",
             rpm.to_string_lossy(),

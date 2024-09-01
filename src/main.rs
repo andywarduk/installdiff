@@ -1,10 +1,12 @@
 use clap::{Parser, Subcommand};
 use new::check_new;
-use rpmdb::load_rpm_database;
+use report::Reports;
+use rpmdb::RpmDb;
 use std::error::Error;
 use verify::verify;
 
 mod new;
+mod report;
 mod rpmdb;
 mod verify;
 
@@ -12,7 +14,7 @@ mod verify;
 #[command(version, about, long_about = None)]
 struct Cli {
     #[command(subcommand)]
-    command: Commands,
+    command: Option<Commands>,
 
     /// Print debugging messages
     #[arg(short = 'd', long)]
@@ -27,7 +29,7 @@ enum Commands {
     List,
 }
 
-#[derive(Parser)]
+#[derive(Parser, Default)]
 struct Check {
     /// Don't check for changed files
     #[arg(short = 'c', long)]
@@ -45,28 +47,39 @@ struct Check {
 fn main() -> Result<(), Box<dyn Error>> {
     let cli = Cli::parse();
 
-    match cli.command {
+    let command = match cli.command {
+        Some(c) => c,
+        None => Commands::Check(Check::default()),
+    };
+
+    match command {
         Commands::List => {
-            let rpmdb = load_rpm_database(cli.debug)?;
+            let rpmdb = RpmDb::load(cli.debug)?;
 
             for file in &rpmdb.files {
                 println!(
-                    "{}  (from {})",
+                    "{} (package {})",
                     file.path.display(),
                     rpmdb.rpm_to_string(file.rpm)
                 )
             }
         }
         Commands::Check(check) => {
-            let rpmdb = load_rpm_database(cli.debug)?;
+            let rpmdb = RpmDb::load(cli.debug)?;
+
+            let mut reports = Reports::new();
 
             if !check.nochanged || !check.nomissing {
-                verify(&rpmdb, !check.nochanged, !check.nomissing);
+                verify(&rpmdb, !check.nochanged, !check.nomissing, &mut reports);
             }
 
             if !check.nonew {
-                check_new(&rpmdb);
+                check_new(&rpmdb, &mut reports);
             }
+
+            reports.sort();
+
+            reports.print();
         }
     }
 

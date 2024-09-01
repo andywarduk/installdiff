@@ -5,16 +5,16 @@ use std::process::Command;
 
 pub fn get_rpm_list(debug: bool) -> Result<Vec<OsString>, Box<dyn Error>> {
     if debug {
-        println!("Getting RPM list");
+        eprintln!("Getting RPM list");
     }
 
-    // Run rpm -ql to get list of installed packages
+    // Run rpm -qa to get list of installed packages
     let output = Command::new("rpm").arg("-qa").output()?;
 
     // Successful?
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        println!("{}", stderr);
+        eprintln!("{}", stderr);
         Err(format!("rpm package query returned {}", output.status))?
     }
 
@@ -27,7 +27,7 @@ pub fn get_rpm_list(debug: bool) -> Result<Vec<OsString>, Box<dyn Error>> {
         .collect::<Vec<_>>();
 
     if debug {
-        println!("{} RPMs found", rpms.len());
+        eprintln!("{} RPMs found", rpms.len());
     }
 
     Ok(rpms)
