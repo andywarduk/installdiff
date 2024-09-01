@@ -3,9 +3,8 @@ use libc::{
     PROC_SUPER_MAGIC, SYSFS_MAGIC, TMPFS_MAGIC, TRACEFS_MAGIC,
 };
 use std::{
-    cmp::Ordering,
     ffi::CString,
-    fs::{self},
+    fs::{self, canonicalize},
     mem::MaybeUninit,
     num::NonZero,
     os::{linux::fs::MetadataExt, unix::ffi::OsStrExt},
@@ -16,12 +15,10 @@ use crate::rpmdb::RpmDb;
 
 pub fn check_new(rpmdb: &RpmDb) {
     // Walk filesystem looking for new files
-    let mut rpm_ptr = 0;
-
-    check_new_dir(PathBuf::from("/"), rpmdb, &mut rpm_ptr);
+    check_new_dir(PathBuf::from("/"), rpmdb);
 }
 
-fn check_new_dir(dir: PathBuf, rpmdb: &RpmDb, rpm_ptr: &mut usize) {
+fn check_new_dir(dir: PathBuf, rpmdb: &RpmDb) {
     match fs::read_dir(&dir) {
         Ok(ents) => {
             let mut ents = ents
@@ -41,7 +38,7 @@ fn check_new_dir(dir: PathBuf, rpmdb: &RpmDb, rpm_ptr: &mut usize) {
             ents.sort();
 
             for ent in ents {
-                check_new_ent(ent, rpmdb, rpm_ptr);
+                check_new_ent(ent, rpmdb);
             }
         }
         Err(e) => {
@@ -50,28 +47,18 @@ fn check_new_dir(dir: PathBuf, rpmdb: &RpmDb, rpm_ptr: &mut usize) {
     }
 }
 
-fn check_new_ent(ent: PathBuf, rpmdb: &RpmDb, rpm_ptr: &mut usize) {
-    loop {
-        let rpm_file = &rpmdb.files[*rpm_ptr].path;
+fn check_new_ent(ent: PathBuf, rpmdb: &RpmDb) {
+    let cpath = match canonicalize(&ent) {
+        Ok(path) => path,
+        _ => ent.clone(),
+    };
 
-        match ent.cmp(rpm_file) {
-            Ordering::Equal => {
-                *rpm_ptr += 1;
-
-                if should_recurse(&ent) {
-                    check_new_dir(ent, rpmdb, rpm_ptr);
-                }
-            }
-            Ordering::Less => {
-                report_new(&ent);
-            }
-            Ordering::Greater => {
-                *rpm_ptr += 1;
-                continue;
-            }
+    if rpmdb.cmap.contains_key(&cpath) {
+        if should_recurse(&ent) {
+            check_new_dir(ent, rpmdb);
         }
-
-        break;
+    } else {
+        report_new(&ent);
     }
 }
 
@@ -103,7 +90,7 @@ fn should_recurse(ent: &Path) -> bool {
             let stat = unsafe { stat.assume_init() };
 
             // Check filesystem type
-            match stat.f_type {
+            match stat.f_type as libc::c_long {
                 PROC_SUPER_MAGIC | TMPFS_MAGIC | SYSFS_MAGIC | DEBUGFS_MAGIC | TRACEFS_MAGIC
                 | HUGETLBFS_MAGIC | CGROUP_SUPER_MAGIC | CGROUP2_SUPER_MAGIC => {
                     recurse = false;

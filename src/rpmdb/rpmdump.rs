@@ -1,21 +1,11 @@
 use std::error::Error;
 use std::ffi::{OsStr, OsString};
-use std::fs::canonicalize;
 use std::os::unix::ffi::OsStringExt;
 use std::path::PathBuf;
 use std::process::Command;
 use std::str;
 
-use unix_mode::is_symlink;
-
-#[derive(Debug, Clone)]
-pub struct RpmFile {
-    pub rpm: usize,
-    pub path: PathBuf,
-    pub size: usize,
-    pub mode: u32,
-    pub chksum: String,
-}
+use super::RpmFile;
 
 pub fn get_rpm_dump(rpm: &OsStr, rpm_elem: usize) -> Result<Vec<RpmFile>, Box<dyn Error>> {
     // Run rpm -q --dump to get list of rpm files
@@ -37,33 +27,12 @@ pub fn get_rpm_dump(rpm: &OsStr, rpm_elem: usize) -> Result<Vec<RpmFile>, Box<dy
     }
 
     // Return rpm dump details
-    let mut rpm_files = output
+    let rpm_files = output
         .stdout
         .split(|c| *c == 0x0a)
         .filter(|line| !line.is_empty() && line[0] != b'(') // Handle '(contains no files)'
         .map(|line| parse_line(rpm_elem, line))
         .collect::<Result<Vec<_>, Box<dyn Error>>>()?;
-
-    // Add canonical names to the file list
-    let cfiles = rpm_files
-        .iter()
-        .filter(|file| !is_symlink(file.mode))
-        .filter_map(|file| match canonicalize(&file.path) {
-            Ok(cpath) => {
-                if file.path != cpath {
-                    Some(RpmFile {
-                        path: cpath,
-                        ..file.clone()
-                    })
-                } else {
-                    None
-                }
-            }
-            _ => None,
-        })
-        .collect::<Vec<_>>();
-
-    rpm_files.extend(cfiles);
 
     Ok(rpm_files)
 }

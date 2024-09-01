@@ -3,7 +3,11 @@ use std::ffi::OsString;
 use std::os::unix::ffi::OsStringExt;
 use std::process::Command;
 
-pub fn get_rpm_list() -> Result<Vec<OsString>, Box<dyn Error>> {
+pub fn get_rpm_list(debug: bool) -> Result<Vec<OsString>, Box<dyn Error>> {
+    if debug {
+        println!("Getting RPM list");
+    }
+
     // Run rpm -ql to get list of installed packages
     let output = Command::new("rpm").arg("-qa").output()?;
 
@@ -21,6 +25,10 @@ pub fn get_rpm_list() -> Result<Vec<OsString>, Box<dyn Error>> {
         .filter(|line| !line.is_empty())
         .map(|line| OsString::from_vec(line.to_vec()))
         .collect::<Vec<_>>();
+
+    if debug {
+        println!("{} RPMs found", rpms.len());
+    }
 
     Ok(rpms)
 }

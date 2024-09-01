@@ -1,47 +1,66 @@
 use std::{fs::symlink_metadata, os::unix::fs::MetadataExt};
 use unix_mode::is_file;
 
-use crate::rpmdb::RpmDb;
+use crate::rpmdb::{RpmDb, RpmFile};
 
-pub fn verify(rpmdb: &RpmDb) {
+pub fn verify(rpmdb: &RpmDb, changed: bool, missing: bool) {
     // Verify files
-    for f in &rpmdb.files {
-        match symlink_metadata(&f.path) {
+    for file in &rpmdb.files {
+        match symlink_metadata(&file.path) {
             Ok(meta) => {
-                if meta.mode() != f.mode {
-                    eprintln!(
-                        "MODE (from {} to {}): {} in {}",
-                        unix_mode::to_string(f.mode),
-                        unix_mode::to_string(meta.mode()),
-                        &f.path.display(),
-                        rpmdb.rpm_to_string(f.rpm)
-                    );
+                if changed {
+                    if meta.mode() != file.mode {
+                        report_change(
+                            rpmdb,
+                            file,
+                            format!(
+                                "mode from {} to {}",
+                                unix_mode::to_string(file.mode),
+                                unix_mode::to_string(meta.mode())
+                            ),
+                        );
 
-                    continue;
+                        continue;
+                    }
+
+                    if is_file(file.mode) && meta.size() != file.size as u64 {
+                        report_change(
+                            rpmdb,
+                            file,
+                            format!("size from {} to {}", file.size, meta.size()),
+                        );
+
+                        continue;
+                    }
+
+                    // TODO checksum
                 }
-
-                if is_file(f.mode) && meta.size() != f.size as u64 {
-                    eprintln!(
-                        "SIZE (from {} to {}): {} in {}",
-                        f.size,
-                        meta.size(),
-                        &f.path.display(),
-                        rpmdb.rpm_to_string(f.rpm)
-                    );
-
-                    continue;
-                }
-
-                // TODO checksum
             }
             Err(e) => match e.kind() {
-                std::io::ErrorKind::NotFound => eprintln!(
-                    "MISSING: {} in {}",
-                    &f.path.display(),
-                    rpmdb.rpm_to_string(f.rpm)
-                ),
-                _ => eprintln!("ERROR: Failed to stat file {} ({e})", &f.path.display()),
+                std::io::ErrorKind::NotFound => {
+                    if missing {
+                        report_missing(rpmdb, file)
+                    }
+                }
+                _ => eprintln!("ERROR: Failed to stat file {} ({e})", &file.path.display()),
             },
         }
     }
+}
+
+fn report_change(rpmdb: &RpmDb, file: &RpmFile, desc: String) {
+    eprintln!(
+        "CHANGE ({}): {} in {}",
+        desc,
+        &file.path.display(),
+        rpmdb.rpm_to_string(file.rpm)
+    );
+}
+
+fn report_missing(rpmdb: &RpmDb, file: &RpmFile) {
+    eprintln!(
+        "MISSING: {} in {}",
+        &file.path.display(),
+        rpmdb.rpm_to_string(file.rpm)
+    );
 }

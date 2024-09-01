@@ -13,21 +13,33 @@ mod verify;
 struct Cli {
     #[command(subcommand)]
     command: Commands,
+
+    /// Print debugging messages
+    #[arg(short = 'd', long)]
+    debug: bool,
 }
 
 #[derive(Subcommand)]
 enum Commands {
     /// Checks the rpm database against the files on the filesystem
-    Check {
-        /// Skip the matched file verification stage
-        #[arg(short = 'v', long)]
-        noverify: bool,
-
-        /// Skip the new file verification stage
-        #[arg(short = 'n', long)]
-        nonew: bool,
-    },
+    Check(Check),
+    /// Prints a list of files in the RPM database
     List,
+}
+
+#[derive(Parser)]
+struct Check {
+    /// Don't check for changed files
+    #[arg(short = 'c', long)]
+    nochanged: bool,
+
+    /// Don't check for missing files
+    #[arg(short = 'm', long)]
+    nomissing: bool,
+
+    /// Don't check for new files
+    #[arg(short = 'n', long)]
+    nonew: bool,
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -35,7 +47,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     match cli.command {
         Commands::List => {
-            let rpmdb = load_rpm_database()?;
+            let rpmdb = load_rpm_database(cli.debug)?;
 
             for file in &rpmdb.files {
                 println!(
@@ -45,14 +57,14 @@ fn main() -> Result<(), Box<dyn Error>> {
                 )
             }
         }
-        Commands::Check { noverify, nonew } => {
-            let rpmdb = load_rpm_database()?;
+        Commands::Check(check) => {
+            let rpmdb = load_rpm_database(cli.debug)?;
 
-            if !noverify {
-                verify(&rpmdb);
+            if !check.nochanged || !check.nomissing {
+                verify(&rpmdb, !check.nochanged, !check.nomissing);
             }
 
-            if !nonew {
+            if !check.nonew {
                 check_new(&rpmdb);
             }
         }
