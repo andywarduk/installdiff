@@ -80,10 +80,10 @@ pub fn verify(rpmdb: &RpmDb, check: &Check, reports: &mut Reports) {
 }
 
 fn check_digest(rpm_file: &RpmFile) -> Result<bool, Box<dyn Error>> {
-    let hasher: Box<dyn Fn(&[u8]) -> bool> = match rpm_file.chksum.len() {
+    let hasher: Box<dyn Fn(Mmap) -> bool> = match rpm_file.chksum.len() {
         16 => {
             // MD5
-            Box::new(|bytes: &[u8]| -> bool {
+            Box::new(|bytes| -> bool {
                 let digest: [u8; 16] = md5::compute(bytes).into();
                 digest == rpm_file.chksum.as_slice()
             })
@@ -107,5 +107,5 @@ fn check_digest(rpm_file: &RpmFile) -> Result<bool, Box<dyn Error>> {
     // Mem map the file
     let mmap = unsafe { Mmap::map(&file)? };
 
-    Ok(hasher(&mmap))
+    Ok(hasher(mmap))
 }
