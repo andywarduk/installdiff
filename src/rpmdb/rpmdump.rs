@@ -1,5 +1,6 @@
 use std::error::Error;
 use std::ffi::{OsStr, OsString};
+use std::num::ParseIntError;
 use std::os::unix::ffi::OsStringExt;
 use std::path::PathBuf;
 use std::process::Command;
@@ -84,10 +85,10 @@ fn parse_line(rpm_elem: usize, line: &[u8]) -> Result<RpmFile, Box<dyn Error>> {
         )
     })?;
 
-    let chksum = String::from_utf8(get_term(term_cnt - 8).to_vec())?;
+    let chksum = decode_hex(str::from_utf8(get_term(term_cnt - 8))?)?;
 
     let mode_slice = get_term(term_cnt - 7);
-    let mode = u32::from_str_radix(&String::from_utf8(mode_slice.to_vec())?, 8).map_err(|e| {
+    let mode = u32::from_str_radix(str::from_utf8(mode_slice)?, 8).map_err(|e| {
         format!(
             "Failed to parse file mode in '{}': {e}",
             String::from_utf8_lossy(mode_slice)
@@ -101,4 +102,11 @@ fn parse_line(rpm_elem: usize, line: &[u8]) -> Result<RpmFile, Box<dyn Error>> {
         mode,
         chksum,
     })
+}
+
+pub fn decode_hex(s: &str) -> Result<Vec<u8>, ParseIntError> {
+    (0..s.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&s[i..i + 2], 16))
+        .collect()
 }

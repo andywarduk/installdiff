@@ -42,6 +42,10 @@ struct Check {
     /// Don't check for new files
     #[arg(short = 'n', long)]
     nonew: bool,
+
+    /// Don't check file digests
+    #[arg(short = 'd', long)]
+    nodigest: bool,
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -70,7 +74,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             let mut reports = Reports::new();
 
             if !check.nochanged || !check.nomissing {
-                verify(&rpmdb, !check.nochanged, !check.nomissing, &mut reports);
+                verify(&rpmdb, &check, &mut reports);
             }
 
             if !check.nonew {

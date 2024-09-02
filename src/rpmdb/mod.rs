@@ -70,5 +70,5 @@ pub struct RpmFile {
     pub path: PathBuf,
     pub size: usize,
     pub mode: u32,
-    pub chksum: String,
+    pub chksum: Vec<u8>,
 }
