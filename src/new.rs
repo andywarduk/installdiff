@@ -11,14 +11,14 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::{report::Reports, rpmdb::RpmDb};
+use crate::{packageman::PackageDb, report::Reports};
 
-pub fn check_new(rpmdb: &RpmDb, reports: &mut Reports) {
+pub fn check_new(packagedb: &PackageDb, reports: &mut Reports) {
     // Walk filesystem looking for new files
-    check_new_dir(PathBuf::from("/"), rpmdb, reports);
+    check_new_dir(PathBuf::from("/"), packagedb, reports);
 }
 
-fn check_new_dir(dir: PathBuf, rpmdb: &RpmDb, reports: &mut Reports) {
+fn check_new_dir(dir: PathBuf, packagedb: &PackageDb, reports: &mut Reports) {
     match fs::read_dir(&dir) {
         Ok(ents) => {
             let mut ents = ents
@@ -38,7 +38,7 @@ fn check_new_dir(dir: PathBuf, rpmdb: &RpmDb, reports: &mut Reports) {
             ents.sort();
 
             for ent in ents {
-                check_new_ent(ent, rpmdb, reports);
+                check_new_ent(ent, packagedb, reports);
             }
         }
         Err(e) => {
@@ -47,15 +47,15 @@ fn check_new_dir(dir: PathBuf, rpmdb: &RpmDb, reports: &mut Reports) {
     }
 }
 
-fn check_new_ent(ent: PathBuf, rpmdb: &RpmDb, reports: &mut Reports) {
+fn check_new_ent(ent: PathBuf, packagedb: &PackageDb, reports: &mut Reports) {
     let cpath = match canonicalize(&ent) {
         Ok(path) => path,
         _ => ent.clone(),
     };
 
-    if rpmdb.cmap.contains_key(&cpath) {
+    if packagedb.cmap.contains_key(&cpath) {
         if should_recurse(&ent) {
-            check_new_dir(ent, rpmdb, reports);
+            check_new_dir(ent, packagedb, reports);
         }
     } else {
         let mode = match ent.symlink_metadata() {

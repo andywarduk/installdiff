@@ -1,13 +1,13 @@
 use clap::{Parser, Subcommand};
 use new::check_new;
+use packageman::PackageDb;
 use report::Reports;
-use rpmdb::RpmDb;
 use std::error::Error;
 use verify::verify;
 
 mod new;
+mod packageman;
 mod report;
-mod rpmdb;
 mod verify;
 
 #[derive(Parser)]
@@ -58,27 +58,27 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     match command {
         Commands::List => {
-            let rpmdb = RpmDb::load(cli.debug)?;
+            let packagedb = PackageDb::load_rpmdb(cli.debug)?;
 
-            for file in &rpmdb.files {
+            for file in &packagedb.files {
                 println!(
                     "{} (package {})",
                     file.path.display(),
-                    rpmdb.rpm_to_string(file.rpm)
+                    packagedb.package_to_string(file.package)
                 )
             }
         }
         Commands::Check(check) => {
-            let rpmdb = RpmDb::load(cli.debug)?;
+            let packagedb = PackageDb::load_rpmdb(cli.debug)?;
 
             let mut reports = Reports::new();
 
             if !check.nochanged || !check.nomissing {
-                verify(&rpmdb, &check, &mut reports);
+                verify(&packagedb, &check, &mut reports);
             }
 
             if !check.nonew {
-                check_new(&rpmdb, &mut reports);
+                check_new(&packagedb, &mut reports);
             }
 
             reports.sort();

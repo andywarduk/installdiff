@@ -6,9 +6,9 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::str;
 
-use super::RpmFile;
+use crate::packageman::PackageFile;
 
-pub fn get_rpm_dump(rpm: &OsStr, rpm_elem: usize) -> Result<Vec<RpmFile>, Box<dyn Error>> {
+pub fn get_rpm_dump(rpm: &OsStr, rpm_elem: usize) -> Result<Vec<PackageFile>, Box<dyn Error>> {
     // Run rpm -q --dump to get list of rpm files
     let output = Command::new("rpm")
         .arg("-q")
@@ -38,7 +38,7 @@ pub fn get_rpm_dump(rpm: &OsStr, rpm_elem: usize) -> Result<Vec<RpmFile>, Box<dy
     Ok(rpm_files)
 }
 
-fn parse_line(rpm_elem: usize, line: &[u8]) -> Result<RpmFile, Box<dyn Error>> {
+fn parse_line(rpm_elem: usize, line: &[u8]) -> Result<PackageFile, Box<dyn Error>> {
     // Terms are:
     //   File name (may contain spaces grr)
     //   File size
@@ -95,8 +95,8 @@ fn parse_line(rpm_elem: usize, line: &[u8]) -> Result<RpmFile, Box<dyn Error>> {
         )
     })?;
 
-    Ok(RpmFile {
-        rpm: rpm_elem,
+    Ok(PackageFile {
+        package: rpm_elem,
         path,
         size,
         mode,

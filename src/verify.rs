@@ -8,21 +8,21 @@ use std::{
 use unix_mode::is_file;
 
 use crate::{
+    packageman::{PackageDb, PackageFile},
     report::Reports,
-    rpmdb::{RpmDb, RpmFile},
     Check,
 };
 
-pub fn verify(rpmdb: &RpmDb, check: &Check, reports: &mut Reports) {
+pub fn verify(packagedb: &PackageDb, check: &Check, reports: &mut Reports) {
     // Verify files
-    for file in &rpmdb.files {
+    for file in &packagedb.files {
         match symlink_metadata(&file.path) {
             Ok(meta) => {
                 if !check.nochanged {
                     // Check for mode change
                     if meta.mode() != file.mode {
                         reports.add_change(
-                            rpmdb,
+                            packagedb,
                             file,
                             format!(
                                 "mode from {} to {}",
@@ -38,7 +38,7 @@ pub fn verify(rpmdb: &RpmDb, check: &Check, reports: &mut Reports) {
                     if is_file(file.mode) {
                         if meta.size() != file.size as u64 {
                             reports.add_change(
-                                rpmdb,
+                                packagedb,
                                 file,
                                 format!("size from {} to {}", file.size, meta.size()),
                             );
@@ -52,7 +52,7 @@ pub fn verify(rpmdb: &RpmDb, check: &Check, reports: &mut Reports) {
                                 Ok(matches) => {
                                     if !matches {
                                         reports.add_change(
-                                            rpmdb,
+                                            packagedb,
                                             file,
                                             String::from("Hash changed"),
                                         );
@@ -70,7 +70,7 @@ pub fn verify(rpmdb: &RpmDb, check: &Check, reports: &mut Reports) {
             Err(e) => match e.kind() {
                 std::io::ErrorKind::NotFound => {
                     if !check.nomissing {
-                        reports.add_missing(rpmdb, file);
+                        reports.add_missing(packagedb, file);
                     }
                 }
                 _ => eprintln!("ERROR: Failed to stat file {} ({e})", &file.path.display()),
@@ -79,13 +79,13 @@ pub fn verify(rpmdb: &RpmDb, check: &Check, reports: &mut Reports) {
     }
 }
 
-fn check_digest(rpm_file: &RpmFile) -> Result<bool, Box<dyn Error>> {
-    let hasher: Box<dyn Fn(Mmap) -> bool> = match rpm_file.chksum.len() {
+fn check_digest(package_file: &PackageFile) -> Result<bool, Box<dyn Error>> {
+    let hasher: Box<dyn Fn(Mmap) -> bool> = match package_file.chksum.len() {
         16 => {
             // MD5
             Box::new(|bytes| -> bool {
                 let digest: [u8; 16] = md5::compute(bytes).into();
-                digest == rpm_file.chksum.as_slice()
+                digest == package_file.chksum.as_slice()
             })
         }
         32 => {
@@ -95,14 +95,14 @@ fn check_digest(rpm_file: &RpmFile) -> Result<bool, Box<dyn Error>> {
                 hasher.update(bytes);
                 let hash = hasher.finalize();
 
-                hash[..] == rpm_file.chksum
+                hash[..] == package_file.chksum
             })
         }
-        len => Err(format!("ERROR: Unknown hash length {}", len))?
+        len => Err(format!("ERROR: Unknown hash length {}", len))?,
     };
 
     // Open the file
-    let file = File::open(&rpm_file.path)?;
+    let file = File::open(&package_file.path)?;
 
     // Mem map the file
     let mmap = unsafe { Mmap::map(&file)? };

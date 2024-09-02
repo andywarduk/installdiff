@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use crate::rpmdb::{RpmDb, RpmFile};
+use crate::packageman::{PackageDb, PackageFile};
 
 pub enum Report {
     Missing(MissingReport),
@@ -68,17 +68,17 @@ impl Reports {
         }
     }
 
-    pub fn add_missing(&mut self, rpmdb: &RpmDb, file: &RpmFile) {
+    pub fn add_missing(&mut self, packagedb: &PackageDb, file: &PackageFile) {
         self.reports.push(Report::Missing(MissingReport {
             path: file.path.clone(),
-            rpm: rpmdb.rpm_to_string(file.rpm).to_string(),
+            rpm: packagedb.package_to_string(file.package).to_string(),
         }))
     }
 
-    pub fn add_change(&mut self, rpmdb: &RpmDb, file: &RpmFile, desc: String) {
+    pub fn add_change(&mut self, packagedb: &PackageDb, file: &PackageFile, desc: String) {
         self.reports.push(Report::Changed(ChangedReport {
             path: file.path.clone(),
-            rpm: rpmdb.rpm_to_string(file.rpm).to_string(),
+            rpm: packagedb.package_to_string(file.package).to_string(),
             desc,
         }))
     }
