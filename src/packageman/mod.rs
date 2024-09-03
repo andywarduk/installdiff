@@ -38,12 +38,10 @@ impl PackageDb {
             }
 
             Ok(PackageMgr::Rpm)
+        } else if apt_available {
+            Ok(PackageMgr::Apt)
         } else {
-            if apt_available {
-                Ok(PackageMgr::Apt)
-            } else {
-                Err("No supported package managers available")?
-            }
+            Err("No supported package managers available")?
         }
     }
 

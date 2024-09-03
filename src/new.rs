@@ -6,7 +6,6 @@ use std::{
     ffi::CString,
     fs::{self, canonicalize},
     mem::MaybeUninit,
-    num::NonZero,
     os::{linux::fs::MetadataExt, unix::ffi::OsStrExt},
     path::{Path, PathBuf},
 };
