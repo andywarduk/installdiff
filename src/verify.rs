@@ -5,64 +5,72 @@ use std::{
     fs::{symlink_metadata, File},
     os::unix::fs::MetadataExt,
 };
-use unix_mode::is_file;
 
 use crate::{
     packageman::{PackageDb, PackageFile},
-    report::Reports,
+    report::Report,
     Check,
 };
 
-pub fn verify(packagedb: &PackageDb, check: &Check, reports: &mut Reports) {
+pub fn verify(packagedb: &PackageDb, check: &Check, reports: &mut Report) {
     // Verify files
-    for file in &packagedb.files {
+    for file in packagedb.files() {
         match symlink_metadata(&file.path) {
             Ok(meta) => {
                 if !check.nochanged {
                     // Check for mode change
-                    if meta.mode() != file.mode {
-                        reports.add_change(
-                            packagedb,
-                            file,
-                            format!(
-                                "mode from {} to {}",
-                                unix_mode::to_string(file.mode),
-                                unix_mode::to_string(meta.mode())
-                            ),
-                        );
-
-                        continue;
-                    }
-
-                    // Check file size for regular files
-                    if is_file(file.mode) {
-                        if meta.size() != file.size as u64 {
+                    if let Some(mode) = file.mode {
+                        if meta.mode() != mode {
                             reports.add_change(
                                 packagedb,
                                 file,
-                                format!("size from {} to {}", file.size, meta.size()),
+                                format!(
+                                    "mode from {} to {}",
+                                    unix_mode::to_string(mode),
+                                    unix_mode::to_string(meta.mode())
+                                ),
                             );
 
                             continue;
                         }
+                    }
 
-                        // Check checksum
-                        if !check.nodigest {
-                            match check_digest(file) {
-                                Ok(matches) => {
-                                    if !matches {
-                                        reports.add_change(
-                                            packagedb,
-                                            file,
-                                            String::from("Hash changed"),
-                                        );
-                                    }
+                    // Check file size
+                    if let Some(size) = file.size {
+                        if meta.size() != size as u64 {
+                            reports.add_change(
+                                packagedb,
+                                file,
+                                format!("size from {} to {}", size, meta.size()),
+                            );
+
+                            continue;
+                        }
+                    }
+
+                    // Check checksum
+                    if !check.nodigest && file.chksum.is_some() {
+                        match check_digest(file) {
+                            Ok(matches) => {
+                                if !matches {
+                                    reports.add_change(
+                                        packagedb,
+                                        file,
+                                        String::from("Hash changed"),
+                                    );
                                 }
-                                Err(e) => eprintln!(
-                                    "ERROR: Failed to check hash for {} ({e})",
-                                    file.path.display()
-                                ),
                             }
+                            Err(e) => eprintln!(
+                                "ERROR: Failed to check hash for {} ({e})",
+                                file.path.display()
+                            ),
+                        }
+                    }
+
+                    // Check modification date
+                    if let Some(mtime) = file.time {
+                        if meta.mtime() > mtime {
+                            reports.add_change(packagedb, file, String::from("Hash changed"));
                         }
                     }
                 }
@@ -80,12 +88,14 @@ pub fn verify(packagedb: &PackageDb, check: &Check, reports: &mut Reports) {
 }
 
 fn check_digest(package_file: &PackageFile) -> Result<bool, Box<dyn Error>> {
-    let hasher: Box<dyn Fn(Mmap) -> bool> = match package_file.chksum.len() {
+    let chksum = package_file.chksum.as_ref().unwrap();
+
+    let hasher: Box<dyn Fn(Mmap) -> bool> = match chksum.len() {
         16 => {
             // MD5
             Box::new(|bytes| -> bool {
                 let digest: [u8; 16] = md5::compute(bytes).into();
-                digest == package_file.chksum.as_slice()
+                digest == chksum.as_slice()
             })
         }
         32 => {
@@ -95,7 +105,7 @@ fn check_digest(package_file: &PackageFile) -> Result<bool, Box<dyn Error>> {
                 hasher.update(bytes);
                 let hash = hasher.finalize();
 
-                hash[..] == package_file.chksum
+                hash[..] == *chksum
             })
         }
         len => Err(format!("ERROR: Unknown hash length {}", len))?,

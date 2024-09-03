@@ -11,28 +11,28 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::{packageman::PackageDb, report::Reports};
+use crate::{packageman::PackageDb, report::Report};
 
-pub fn check_new(packagedb: &PackageDb, reports: &mut Reports) {
+pub fn check_new(packagedb: &PackageDb, reports: &mut Report) {
     // Walk filesystem looking for new files
     check_new_dir(PathBuf::from("/"), packagedb, reports);
 }
 
-fn check_new_dir(dir: PathBuf, packagedb: &PackageDb, reports: &mut Reports) {
+fn check_new_dir(dir: PathBuf, packagedb: &PackageDb, reports: &mut Report) {
     match fs::read_dir(&dir) {
         Ok(ents) => {
             let mut ents = ents
-                .filter(|ent| match ent {
-                    Ok(_) => true,
+                .filter_map(|ent| match ent {
+                    Ok(ent) => Some(ent),
                     Err(e) => {
                         eprintln!(
                             "ERROR: Failed to get directory entry {} ({e})",
                             &dir.display()
                         );
-                        false
+                        None
                     }
                 })
-                .map(|ent| ent.unwrap().path())
+                .map(|ent| ent.path())
                 .collect::<Vec<_>>();
 
             ents.sort();
@@ -47,13 +47,13 @@ fn check_new_dir(dir: PathBuf, packagedb: &PackageDb, reports: &mut Reports) {
     }
 }
 
-fn check_new_ent(ent: PathBuf, packagedb: &PackageDb, reports: &mut Reports) {
+fn check_new_ent(ent: PathBuf, packagedb: &PackageDb, reports: &mut Report) {
     let cpath = match canonicalize(&ent) {
         Ok(path) => path,
         _ => ent.clone(),
     };
 
-    if packagedb.cmap.contains_key(&cpath) {
+    if packagedb.find_canonical(&cpath) {
         if should_recurse(&ent) {
             check_new_dir(ent, packagedb, reports);
         }
@@ -73,16 +73,8 @@ fn should_recurse(ent: &Path) -> bool {
     if ent.is_dir() && !ent.is_symlink() {
         recurse = true;
 
-        // Convert path to non-zero bytes
-        let cbytes = ent
-            .as_os_str()
-            .as_bytes()
-            .iter()
-            .map(|b| NonZero::new(*b).unwrap())
-            .collect::<Vec<_>>();
-
-        // Convert non-zero bytes to C string
-        let cstr = CString::from(cbytes);
+        // Convert path to CStr
+        let cstr = CString::new(ent.as_os_str().as_bytes()).unwrap();
 
         // Create statfs64 buffer
         let mut stat = MaybeUninit::<statfs64>::zeroed();

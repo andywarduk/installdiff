@@ -1,12 +1,13 @@
 use std::error::Error;
-use std::ffi::{OsStr, OsString};
-use std::num::ParseIntError;
-use std::os::unix::ffi::OsStringExt;
+use std::ffi::OsStr;
+use std::os::unix::ffi::OsStrExt;
 use std::path::PathBuf;
 use std::process::Command;
 use std::str;
 
-use crate::packageman::PackageFile;
+use unix_mode::is_file;
+
+use crate::packageman::{decode_hex, PackageFile};
 
 pub fn get_rpm_dump(rpm: &OsStr, rpm_elem: usize) -> Result<Vec<PackageFile>, Box<dyn Error>> {
     // Run rpm -q --dump to get list of rpm files
@@ -75,19 +76,11 @@ fn parse_line(rpm_elem: usize, line: &[u8]) -> Result<PackageFile, Box<dyn Error
     };
 
     // Break out file name
-    let path = PathBuf::from(OsString::from_vec((line[..spcpos[term_cnt - 11]]).to_vec()));
+    let path = PathBuf::from(OsStr::from_bytes(&line[..spcpos[term_cnt - 11]]));
 
-    let size_slice = get_term(term_cnt - 10);
-    let size = str::from_utf8(size_slice)?.parse::<usize>().map_err(|e| {
-        format!(
-            "Failed to parse size '{}': {e}",
-            String::from_utf8_lossy(size_slice)
-        )
-    })?;
-
-    let chksum = decode_hex(str::from_utf8(get_term(term_cnt - 8))?)?;
-
+    // Get mode
     let mode_slice = get_term(term_cnt - 7);
+
     let mode = u32::from_str_radix(str::from_utf8(mode_slice)?, 8).map_err(|e| {
         format!(
             "Failed to parse file mode in '{}': {e}",
@@ -95,18 +88,47 @@ fn parse_line(rpm_elem: usize, line: &[u8]) -> Result<PackageFile, Box<dyn Error
         )
     })?;
 
+    let (size, chksum) = if is_file(mode) {
+        // Get size
+        let size_slice = get_term(term_cnt - 10);
+
+        let size = Some(str::from_utf8(size_slice)?.parse::<usize>().map_err(|e| {
+            format!(
+                "Failed to parse size '{}': {e}",
+                String::from_utf8_lossy(size_slice)
+            )
+        })?);
+
+        // Get checksum
+        let chksum_str = str::from_utf8(get_term(term_cnt - 8))?;
+
+        let chksum = if chksum_str.chars().any(|c| c != '0') {
+            Some(decode_hex(chksum_str)?)
+        } else {
+            None
+        };
+
+        (size, chksum)
+    } else {
+        (None, None)
+    };
+
+    // Get time
+    let time_slice = get_term(term_cnt - 9);
+
+    let time = Some(str::from_utf8(time_slice)?.parse::<i64>().map_err(|e| {
+        format!(
+            "Failed to parse time '{}': {e}",
+            String::from_utf8_lossy(time_slice)
+        )
+    })?);
+
     Ok(PackageFile {
         package: rpm_elem,
         path,
         size,
-        mode,
+        mode: Some(mode),
         chksum,
+        time,
     })
-}
-
-pub fn decode_hex(s: &str) -> Result<Vec<u8>, ParseIntError> {
-    (0..s.len())
-        .step_by(2)
-        .map(|i| u8::from_str_radix(&s[i..i + 2], 16))
-        .collect()
 }

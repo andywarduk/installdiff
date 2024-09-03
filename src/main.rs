@@ -1,8 +1,8 @@
-use clap::{Parser, Subcommand};
+use clap::{ArgAction, Parser, Subcommand};
 use new::check_new;
-use packageman::PackageDb;
-use report::Reports;
-use std::error::Error;
+use packageman::{PackageDb, PackageMgr};
+use report::Report;
+use std::{borrow::Cow, error::Error};
 use verify::verify;
 
 mod new;
@@ -10,18 +10,22 @@ mod packageman;
 mod report;
 mod verify;
 
-#[derive(Parser)]
+#[derive(Parser, Clone)]
 #[command(version, about, long_about = None)]
 struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
 
-    /// Print debugging messages
+    /// Package manager
     #[arg(short = 'd', long)]
-    debug: bool,
+    manager: Option<PackageMgr>,
+
+    /// Print debugging messages
+    #[arg(short = 'd', long, action = ArgAction::Count)]
+    debug: u8,
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Clone)]
 enum Commands {
     /// Checks the rpm database against the files on the filesystem
     Check(Check),
@@ -29,7 +33,7 @@ enum Commands {
     List,
 }
 
-#[derive(Parser, Default)]
+#[derive(Parser, Clone, Default)]
 struct Check {
     /// Don't check for changed files
     #[arg(short = 'c', long)]
@@ -51,16 +55,21 @@ struct Check {
 fn main() -> Result<(), Box<dyn Error>> {
     let cli = Cli::parse();
 
-    let command = match cli.command {
-        Some(c) => c,
-        None => Commands::Check(Check::default()),
+    // Get or default command
+    let command = match &cli.command {
+        Some(c) => Cow::Borrowed(c),
+        None => Cow::Owned(Commands::Check(Check::default())),
     };
 
-    match command {
+    match command.as_ref() {
         Commands::List => {
-            let packagedb = PackageDb::load_rpmdb(cli.debug)?;
+            // List installed package files
 
-            for file in &packagedb.files {
+            // Load package database
+            let packagedb = load_packages(&cli)?;
+
+            // Print files
+            for file in packagedb.files() {
                 println!(
                     "{} (package {})",
                     file.path.display(),
@@ -69,23 +78,40 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
         }
         Commands::Check(check) => {
-            let packagedb = PackageDb::load_rpmdb(cli.debug)?;
+            // Check packages
 
-            let mut reports = Reports::new();
+            // Load package database
+            let packagedb = load_packages(&cli)?;
 
+            // Create report
+            let mut report = Report::new();
+
+            // Verify package database files
             if !check.nochanged || !check.nomissing {
-                verify(&packagedb, &check, &mut reports);
+                verify(&packagedb, check, &mut report);
             }
 
+            // Check for new files
             if !check.nonew {
-                check_new(&packagedb, &mut reports);
+                check_new(&packagedb, &mut report);
             }
 
-            reports.sort();
+            // Sort report in to file order
+            report.sort();
 
-            reports.print();
+            // Print the report
+            report.print();
         }
     }
 
     Ok(())
+}
+
+fn load_packages(cli: &Cli) -> Result<PackageDb, Box<dyn Error>> {
+    let mgr = match &cli.manager {
+        Some(mgr) => mgr.clone(),
+        None => PackageDb::detect_mgr()?,
+    };
+
+    PackageDb::load(mgr, cli.debug)
 }

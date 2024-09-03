@@ -3,8 +3,8 @@ use std::ffi::OsString;
 use std::os::unix::ffi::OsStringExt;
 use std::process::Command;
 
-pub fn get_rpm_list(debug: bool) -> Result<Vec<OsString>, Box<dyn Error>> {
-    if debug {
+pub fn get_rpm_list(debug: u8) -> Result<Vec<OsString>, Box<dyn Error>> {
+    if debug > 0 {
         eprintln!("Getting RPM list");
     }
 
@@ -26,7 +26,7 @@ pub fn get_rpm_list(debug: bool) -> Result<Vec<OsString>, Box<dyn Error>> {
         .map(|line| OsString::from_vec(line.to_vec()))
         .collect::<Vec<_>>();
 
-    if debug {
+    if debug > 0 {
         eprintln!("{} RPMs found", rpms.len());
     }
 
