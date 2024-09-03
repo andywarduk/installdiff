@@ -68,9 +68,15 @@ pub fn verify(packagedb: &PackageDb, check: &Check, reports: &mut Report) {
                     }
 
                     // Check modification date
-                    if let Some(mtime) = file.time {
-                        if meta.mtime() > mtime {
-                            reports.add_change(packagedb, file, String::from("Hash changed"));
+                    if meta.is_file() {
+                        if let Some(mtime) = file.time {
+                            if meta.mtime() > mtime {
+                                reports.add_change(
+                                    packagedb,
+                                    file,
+                                    String::from("Modification time later"),
+                                );
+                            }
                         }
                     }
                 }
