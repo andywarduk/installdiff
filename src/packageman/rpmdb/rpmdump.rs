@@ -124,8 +124,8 @@ fn parse_line(rpm_elem: usize, line: &[u8]) -> Result<PackageFile, Box<dyn Error
     })?);
 
     Ok(PackageFile {
-        package: rpm_elem,
         path,
+        package: Some(rpm_elem),
         size,
         mode: Some(mode),
         chksum,

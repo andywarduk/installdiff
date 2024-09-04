@@ -17,7 +17,7 @@ struct Cli {
     command: Option<Commands>,
 
     /// Package manager
-    #[arg(short = 'd', long)]
+    #[arg(short = 'p', long)]
     manager: Option<PackageMgr>,
 
     /// Print debugging messages
@@ -27,29 +27,29 @@ struct Cli {
 
 #[derive(Subcommand, Clone)]
 enum Commands {
-    /// Checks the rpm database against the files on the filesystem
+    /// Checks the package manager database against the files on the filesystem
     Check(Check),
-    /// Prints a list of files in the RPM database
+    /// Prints a list of files in the package manager database
     List,
 }
 
 #[derive(Parser, Clone, Default)]
 struct Check {
-    /// Don't check for changed files
+    /// Don't report changed files
     #[arg(short = 'c', long)]
     nochanged: bool,
 
-    /// Don't check for missing files
+    /// Don't report missing files
     #[arg(short = 'm', long)]
     nomissing: bool,
 
-    /// Don't check for new files
+    /// Don't report new files
     #[arg(short = 'n', long)]
     nonew: bool,
 
-    /// Don't check file digests
-    #[arg(short = 'd', long)]
-    nodigest: bool,
+    /// Check file checksums
+    #[arg(short = 's', long)]
+    checksum: bool,
 }
 
 fn main() -> Result<(), Box<dyn Error>> {

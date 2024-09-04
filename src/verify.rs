@@ -1,8 +1,8 @@
-use memmap2::Mmap;
+use memmap2::{Advice, Mmap};
 use sha2::{Digest, Sha256};
 use std::{
     error::Error,
-    fs::{symlink_metadata, File},
+    fs::{symlink_metadata, File, Metadata},
     os::unix::fs::MetadataExt,
 };
 
@@ -18,67 +18,7 @@ pub fn verify(packagedb: &PackageDb, check: &Check, reports: &mut Report) {
         match symlink_metadata(&file.path) {
             Ok(meta) => {
                 if !check.nochanged {
-                    // Check for mode change
-                    if let Some(mode) = file.mode {
-                        if meta.mode() != mode {
-                            reports.add_change(
-                                packagedb,
-                                file,
-                                format!(
-                                    "mode from {} to {}",
-                                    unix_mode::to_string(mode),
-                                    unix_mode::to_string(meta.mode())
-                                ),
-                            );
-
-                            continue;
-                        }
-                    }
-
-                    // Check file size
-                    if let Some(size) = file.size {
-                        if meta.size() != size as u64 {
-                            reports.add_change(
-                                packagedb,
-                                file,
-                                format!("size from {} to {}", size, meta.size()),
-                            );
-
-                            continue;
-                        }
-                    }
-
-                    // Check checksum
-                    if !check.nodigest && file.chksum.is_some() {
-                        match check_digest(file) {
-                            Ok(matches) => {
-                                if !matches {
-                                    reports.add_change(
-                                        packagedb,
-                                        file,
-                                        String::from("Hash changed"),
-                                    );
-                                }
-                            }
-                            Err(e) => eprintln!(
-                                "ERROR: Failed to check hash for {} ({e})",
-                                file.path.display()
-                            ),
-                        }
-                    }
-
-                    // Check modification date
-                    if meta.is_file() {
-                        if let Some(mtime) = file.time {
-                            if meta.mtime() > mtime {
-                                reports.add_change(
-                                    packagedb,
-                                    file,
-                                    String::from("Modification time later"),
-                                );
-                            }
-                        }
-                    }
+                    verify_file(packagedb, check, reports, file, meta);
                 }
             }
             Err(e) => match e.kind() {
@@ -89,6 +29,70 @@ pub fn verify(packagedb: &PackageDb, check: &Check, reports: &mut Report) {
                 }
                 _ => eprintln!("ERROR: Failed to stat file {} ({e})", &file.path.display()),
             },
+        }
+    }
+}
+
+fn verify_file(
+    packagedb: &PackageDb,
+    check: &Check,
+    reports: &mut Report,
+    file: &PackageFile,
+    meta: Metadata,
+) {
+    // Check for mode change
+    if let Some(mode) = file.mode {
+        if meta.mode() != mode {
+            reports.add_change(
+                packagedb,
+                file,
+                format!(
+                    "mode from {} to {}",
+                    unix_mode::to_string(mode),
+                    unix_mode::to_string(meta.mode())
+                ),
+            );
+
+            return;
+        }
+    }
+
+    // Check file size
+    if let Some(size) = file.size {
+        if meta.size() != size as u64 {
+            reports.add_change(
+                packagedb,
+                file,
+                format!("size from {} to {}", size, meta.size()),
+            );
+
+            return;
+        }
+    }
+
+    // Check checksum
+    if check.checksum && file.chksum.is_some() {
+        match check_digest(file) {
+            Ok(matches) => {
+                if !matches {
+                    reports.add_change(packagedb, file, String::from("Hash changed"));
+                    return;
+                }
+            }
+            Err(e) => eprintln!(
+                "ERROR: Failed to check hash for {} ({e})",
+                file.path.display()
+            ),
+        }
+    }
+
+    // Check modification date for regular files
+    if meta.is_file() {
+        if let Some(mtime) = file.time {
+            if meta.mtime() > mtime {
+                reports.add_change(packagedb, file, String::from("Modification time later"));
+                return;
+            }
         }
     }
 }
@@ -122,6 +126,8 @@ fn check_digest(package_file: &PackageFile) -> Result<bool, Box<dyn Error>> {
 
     // Mem map the file
     let mmap = unsafe { Mmap::map(&file)? };
+    let _ = mmap.advise(Advice::Sequential);
 
+    // Hash the file and check
     Ok(hasher(mmap))
 }

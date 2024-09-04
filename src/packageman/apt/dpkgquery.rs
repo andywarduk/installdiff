@@ -81,8 +81,8 @@ pub fn dpkg_query(debug: u8) -> Result<(Vec<OsString>, Vec<PackageFile>), Box<dy
 
                 // Add file
                 files.push(PackageFile {
-                    package: packages.len() - 1,
                     path: PathBuf::from(line),
+                    package: Some(packages.len() - 1),
                     size: None,
                     mode: None,
                     chksum,

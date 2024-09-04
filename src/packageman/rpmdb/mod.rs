@@ -13,20 +13,32 @@ pub fn load_rpm(debug: u8) -> Result<(Vec<OsString>, Vec<PackageFile>), Box<dyn 
     let rpms = get_rpm_list(debug)?;
 
     // Build RPM file list
+    if debug > 0 {
+        eprintln!("Getting RPM file list");
+    }
+
     let mut rpm_files = Vec::new();
 
     for (rpm_elem, rpm) in rpms.iter().enumerate() {
-        if debug > 0 {
+        if debug > 1 {
             eprintln!("Loading {}", rpm.to_string_lossy());
         }
 
         let this_rpm_files = get_rpm_dump(rpm, rpm_elem)?;
 
-        if debug > 0 {
-            eprintln!("{} files found", this_rpm_files.len());
+        if debug > 1 {
+            eprintln!(
+                "{} files found in {}",
+                this_rpm_files.len(),
+                rpm.to_string_lossy()
+            );
         }
 
         rpm_files.extend(this_rpm_files);
+    }
+
+    if debug > 0 {
+        eprintln!("{} files found", rpm_files.len());
     }
 
     Ok((rpms, rpm_files))

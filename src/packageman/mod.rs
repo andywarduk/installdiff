@@ -55,18 +55,57 @@ impl PackageDb {
     fn load_rpm(debug: u8) -> Result<PackageDb, Box<dyn Error>> {
         let (packages, files) = load_rpm(debug)?;
 
-        Ok(Self::new(packages, files))
+        Ok(Self::new(packages, files, debug))
     }
 
     fn load_apt(debug: u8) -> Result<PackageDb, Box<dyn Error>> {
         let (packages, files) = load_apt(debug)?;
 
-        Ok(Self::new(packages, files))
+        Ok(Self::new(packages, files, debug))
     }
 
-    fn new(packages: Vec<OsString>, mut files: Vec<PackageFile>) -> PackageDb {
+    fn new(packages: Vec<OsString>, mut files: Vec<PackageFile>, debug: u8) -> PackageDb {
         // Sort file list
         files.sort_by(|a, b| a.path.cmp(&b.path));
+
+        // Fill in any missing directories
+        let mut last_dir: &Path = Path::new("/");
+        let mut add_files = Vec::new();
+
+        for file in &files {
+            let mut anc = file.path.ancestors().collect::<Vec<_>>();
+            anc.reverse();
+
+            let next = anc.pop().unwrap();
+
+            for anc in anc.into_iter().rev() {
+                if last_dir.starts_with(anc) {
+                    break;
+                }
+
+                if debug > 2 {
+                    eprintln!("Adding missing path {}", anc.display());
+                }
+
+                add_files.push(PackageFile {
+                    package: None,
+                    path: anc.to_owned(),
+                    size: None,
+                    mode: None,
+                    chksum: None,
+                    time: None,
+                });
+            }
+
+            last_dir = next;
+        }
+
+        if !add_files.is_empty() {
+            files.extend(add_files);
+
+            // Resort file list
+            files.sort_by(|a, b| a.path.cmp(&b.path));
+        }
 
         // Build hashset of canonical names
         let cset = files
@@ -88,8 +127,11 @@ impl PackageDb {
         Box::new(self.files.iter())
     }
 
-    pub fn package_to_string(&self, idx: usize) -> Cow<'_, str> {
-        self.packages[idx].to_string_lossy()
+    pub fn package_to_string(&self, idx: Option<usize>) -> Cow<'_, str> {
+        match idx {
+            Some(idx) => self.packages[idx].to_string_lossy(),
+            None => Cow::Borrowed("None"),
+        }
     }
 
     pub fn find_canonical(&self, path: &Path) -> bool {
@@ -99,8 +141,8 @@ impl PackageDb {
 
 #[derive(Debug)]
 pub struct PackageFile {
-    pub package: usize,
     pub path: PathBuf,
+    pub package: Option<usize>,
     pub size: Option<usize>,
     pub mode: Option<u32>,
     pub chksum: Option<Vec<u8>>,
