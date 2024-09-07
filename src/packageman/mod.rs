@@ -1,19 +1,21 @@
 use clap::ValueEnum;
+pub use package::Package;
+pub use packagefile::PackageFile;
 use std::{
-    borrow::Cow,
     collections::HashSet,
     error::Error,
-    ffi::OsString,
     fs::canonicalize,
     num::ParseIntError,
     path::{Path, PathBuf},
 };
 
 use apt::{apt_available, load_apt};
-use rpmdb::{load_rpm, rpm_available};
+use rpm::{load_rpm, rpm_available};
 
 mod apt;
-mod rpmdb;
+mod package;
+mod packagefile;
+mod rpm;
 
 #[derive(ValueEnum, Clone)]
 pub enum PackageMgr {
@@ -22,10 +24,13 @@ pub enum PackageMgr {
 }
 
 pub struct PackageDb {
-    packages: Vec<OsString>,
+    packages: Vec<Package>,
     files: Vec<PackageFile>,
     cset: HashSet<PathBuf>,
+    ignores: Vec<String>,
 }
+
+pub type LoadResult = (Vec<Package>, Vec<PackageFile>, Vec<String>);
 
 impl PackageDb {
     pub fn detect_mgr() -> Result<PackageMgr, Box<dyn Error>> {
@@ -53,27 +58,32 @@ impl PackageDb {
     }
 
     fn load_rpm(debug: u8) -> Result<PackageDb, Box<dyn Error>> {
-        let (packages, files) = load_rpm(debug)?;
+        let (packages, files, ignores) = load_rpm(debug)?;
 
-        Ok(Self::new(packages, files, debug))
+        Ok(Self::new(packages, files, ignores, debug))
     }
 
     fn load_apt(debug: u8) -> Result<PackageDb, Box<dyn Error>> {
-        let (packages, files) = load_apt(debug)?;
+        let (packages, files, ignores) = load_apt(debug)?;
 
-        Ok(Self::new(packages, files, debug))
+        Ok(Self::new(packages, files, ignores, debug))
     }
 
-    fn new(packages: Vec<OsString>, mut files: Vec<PackageFile>, debug: u8) -> PackageDb {
+    fn new(
+        packages: Vec<Package>,
+        mut files: Vec<PackageFile>,
+        ignores: Vec<String>,
+        debug: u8,
+    ) -> PackageDb {
         // Sort file list
-        files.sort_by(|a, b| a.path.cmp(&b.path));
+        files.sort_by(|a, b| a.path().cmp(b.path()));
 
         // Fill in any missing directories
         let mut last_dir: &Path = Path::new("/");
         let mut add_files = Vec::new();
 
         for file in &files {
-            let mut anc = file.path.ancestors().collect::<Vec<_>>();
+            let mut anc = file.path().ancestors().collect::<Vec<_>>();
             anc.reverse();
 
             let next = anc.pop().unwrap();
@@ -87,14 +97,14 @@ impl PackageDb {
                     eprintln!("Adding missing path {}", anc.display());
                 }
 
-                add_files.push(PackageFile {
-                    package: None,
-                    path: anc.to_owned(),
-                    size: None,
-                    mode: None,
-                    chksum: None,
-                    time: None,
-                });
+                add_files.push(PackageFile::new(
+                    anc.to_owned(),
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                ));
             }
 
             last_dir = next;
@@ -104,15 +114,15 @@ impl PackageDb {
             files.extend(add_files);
 
             // Resort file list
-            files.sort_by(|a, b| a.path.cmp(&b.path));
+            files.sort_by(|a, b| a.path().cmp(b.path()));
         }
 
         // Build hashset of canonical names
         let cset = files
             .iter()
-            .map(|file| match canonicalize(&file.path) {
+            .map(|file| match canonicalize(file.path()) {
                 Ok(path) => path,
-                Err(_) => file.path.clone(),
+                Err(_) => PathBuf::from(file.path()),
             })
             .collect::<HashSet<_>>();
 
@@ -120,33 +130,38 @@ impl PackageDb {
             packages,
             files,
             cset,
+            ignores,
         }
+    }
+
+    pub fn packages<'a>(&'a self) -> Box<dyn Iterator<Item = &'a Package> + 'a> {
+        Box::new(self.packages.iter())
     }
 
     pub fn files<'a>(&'a self) -> Box<dyn Iterator<Item = &'a PackageFile> + 'a> {
         Box::new(self.files.iter())
     }
 
-    pub fn package_to_string(&self, idx: Option<usize>) -> Cow<'_, str> {
+    pub fn ignores<'a>(&'a self) -> Box<dyn Iterator<Item = &'a String> + 'a> {
+        Box::new(self.ignores.iter())
+    }
+
+    pub fn package_to_string(&self, idx: Option<usize>, with_version: bool) -> String {
         match idx {
-            Some(idx) => self.packages[idx].to_string_lossy(),
-            None => Cow::Borrowed("None"),
+            Some(idx) => {
+                if with_version {
+                    self.packages[idx].name_arch()
+                } else {
+                    self.packages[idx].name_ver_arch()
+                }
+            }
+            None => String::from("None"),
         }
     }
 
     pub fn find_canonical(&self, path: &Path) -> bool {
         self.cset.contains(path)
     }
-}
-
-#[derive(Debug)]
-pub struct PackageFile {
-    pub path: PathBuf,
-    pub package: Option<usize>,
-    pub size: Option<usize>,
-    pub mode: Option<u32>,
-    pub chksum: Option<Vec<u8>>,
-    pub time: Option<i64>,
 }
 
 pub fn decode_hex(s: &str) -> Result<Vec<u8>, ParseIntError> {

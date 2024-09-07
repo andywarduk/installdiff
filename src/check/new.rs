@@ -10,7 +10,9 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::{packageman::PackageDb, report::Report};
+use crate::packageman::PackageDb;
+
+use super::report::Report;
 
 pub fn check_new(packagedb: &PackageDb, reports: &mut Report) {
     // Walk filesystem looking for new files

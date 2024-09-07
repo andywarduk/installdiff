@@ -7,14 +7,14 @@ use std::str;
 
 use unix_mode::is_file;
 
-use crate::packageman::{decode_hex, PackageFile};
+use crate::packageman::{decode_hex, Package, PackageFile};
 
-pub fn get_rpm_dump(rpm: &OsStr, rpm_elem: usize) -> Result<Vec<PackageFile>, Box<dyn Error>> {
+pub fn get_rpm_dump(rpm: &Package, rpm_elem: usize) -> Result<Vec<PackageFile>, Box<dyn Error>> {
     // Run rpm -q --dump to get list of rpm files
     let output = Command::new("rpm")
         .arg("-q")
         .arg("--dump")
-        .arg(rpm)
+        .arg(rpm.fullname())
         .output()?;
 
     // Successful?
@@ -23,7 +23,7 @@ pub fn get_rpm_dump(rpm: &OsStr, rpm_elem: usize) -> Result<Vec<PackageFile>, Bo
         eprintln!("{}", stderr);
         Err(format!(
             "rpm package dump for {} returned {}",
-            rpm.to_string_lossy(),
+            rpm.fullnamestr(),
             output.status
         ))?
     }
@@ -123,12 +123,12 @@ fn parse_line(rpm_elem: usize, line: &[u8]) -> Result<PackageFile, Box<dyn Error
         )
     })?);
 
-    Ok(PackageFile {
+    Ok(PackageFile::new(
         path,
-        package: Some(rpm_elem),
+        Some(rpm_elem),
         size,
-        mode: Some(mode),
+        Some(mode),
         chksum,
         time,
-    })
+    ))
 }

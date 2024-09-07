@@ -6,28 +6,26 @@ use std::{
     os::unix::fs::MetadataExt,
 };
 
-use crate::{
-    packageman::{PackageDb, PackageFile},
-    report::Report,
-    Check,
-};
+use crate::packageman::{PackageDb, PackageFile};
 
-pub fn verify(packagedb: &PackageDb, check: &Check, reports: &mut Report) {
+use super::{report::Report, CheckArgs};
+
+pub fn verify(packagedb: &PackageDb, args: &CheckArgs, reports: &mut Report) {
     // Verify files
     for file in packagedb.files() {
-        match symlink_metadata(&file.path) {
+        match symlink_metadata(file.path()) {
             Ok(meta) => {
-                if !check.nochanged {
-                    verify_file(packagedb, check, reports, file, meta);
+                if args.changed {
+                    verify_file(packagedb, args, reports, file, meta);
                 }
             }
             Err(e) => match e.kind() {
                 std::io::ErrorKind::NotFound => {
-                    if !check.nomissing {
+                    if args.missing {
                         reports.add_missing(packagedb, file);
                     }
                 }
-                _ => eprintln!("ERROR: Failed to stat file {} ({e})", &file.path.display()),
+                _ => eprintln!("ERROR: Failed to stat file {} ({e})", file.path().display()),
             },
         }
     }
@@ -35,20 +33,20 @@ pub fn verify(packagedb: &PackageDb, check: &Check, reports: &mut Report) {
 
 fn verify_file(
     packagedb: &PackageDb,
-    check: &Check,
+    args: &CheckArgs,
     reports: &mut Report,
     file: &PackageFile,
     meta: Metadata,
 ) {
     // Check for mode change
-    if let Some(mode) = file.mode {
-        if meta.mode() != mode {
+    if let Some(mode) = file.mode() {
+        if meta.mode() != *mode {
             reports.add_change(
                 packagedb,
                 file,
                 format!(
                     "mode from {} to {}",
-                    unix_mode::to_string(mode),
+                    unix_mode::to_string(*mode),
                     unix_mode::to_string(meta.mode())
                 ),
             );
@@ -58,8 +56,8 @@ fn verify_file(
     }
 
     // Check file size
-    if let Some(size) = file.size {
-        if meta.size() != size as u64 {
+    if let Some(size) = file.size() {
+        if meta.size() != *size as u64 {
             reports.add_change(
                 packagedb,
                 file,
@@ -71,7 +69,7 @@ fn verify_file(
     }
 
     // Check checksum
-    if check.checksum && file.chksum.is_some() {
+    if args.checksum && file.chksum().is_some() {
         match check_digest(file) {
             Ok(matches) => {
                 if !matches {
@@ -81,16 +79,17 @@ fn verify_file(
             }
             Err(e) => eprintln!(
                 "ERROR: Failed to check hash for {} ({e})",
-                file.path.display()
+                file.path().display()
             ),
         }
     }
 
     // Check modification date for regular files
     if meta.is_file() {
-        if let Some(mtime) = file.time {
-            if meta.mtime() > mtime {
+        if let Some(mtime) = file.time() {
+            if meta.mtime() > *mtime {
                 reports.add_change(packagedb, file, String::from("Modification time later"));
+                #[allow(clippy::needless_return)]
                 return;
             }
         }
@@ -98,7 +97,7 @@ fn verify_file(
 }
 
 fn check_digest(package_file: &PackageFile) -> Result<bool, Box<dyn Error>> {
-    let chksum = package_file.chksum.as_ref().unwrap();
+    let chksum = package_file.chksum().as_ref().unwrap();
 
     let hasher: Box<dyn Fn(Mmap) -> bool> = match chksum.len() {
         16 => {
@@ -122,7 +121,7 @@ fn check_digest(package_file: &PackageFile) -> Result<bool, Box<dyn Error>> {
     };
 
     // Open the file
-    let file = File::open(&package_file.path)?;
+    let file = File::open(package_file.path())?;
 
     // Mem map the file
     let mmap = unsafe { Mmap::map(&file)? };

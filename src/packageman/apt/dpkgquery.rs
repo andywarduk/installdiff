@@ -5,11 +5,11 @@ use std::os::unix::ffi::{OsStrExt, OsStringExt};
 use std::path::PathBuf;
 use std::process::Command;
 
-use crate::packageman::PackageFile;
+use crate::packageman::{Package, PackageFile};
 
 use super::dpkgcsums::dpkgcsums;
 
-pub fn dpkg_query(debug: u8) -> Result<(Vec<OsString>, Vec<PackageFile>), Box<dyn Error>> {
+pub fn dpkg_query(debug: u8) -> Result<(Vec<Package>, Vec<PackageFile>), Box<dyn Error>> {
     let mut packages = Vec::new();
     let mut files = Vec::new();
 
@@ -21,7 +21,7 @@ pub fn dpkg_query(debug: u8) -> Result<(Vec<OsString>, Vec<PackageFile>), Box<dy
     let output = Command::new("dpkg-query")
         .arg("--show")
         .arg("--showformat")
-        .arg("${Package}:${Architecture}\t${db:Status-Abbrev}\t${db-fsys:Last-Modified}\n${db-fsys:Files}!END\n")
+        .arg("${Package}\t${Version}\t${Architecture}\t${db:Status-Abbrev}\t${db-fsys:Last-Modified}\n${db-fsys:Files}!END\n")
         .output()?;
 
     // Successful?
@@ -42,14 +42,22 @@ pub fn dpkg_query(debug: u8) -> Result<(Vec<OsString>, Vec<PackageFile>), Box<dy
         .filter(|line| !line.is_empty())
     {
         if !in_files {
-            let mut split = line.split(|c| *c == 0x09);
+            let mut split = line.split(|c| *c == b'\t');
 
-            // Get package name
+            // Get package details
             let name = OsString::from_vec(split.next().unwrap().to_vec());
-
-            // Get status
-            let _ = split.next().unwrap();
+            let version = OsString::from_vec(split.next().unwrap().to_vec());
+            let arch = OsString::from_vec(split.next().unwrap().to_vec());
             // TODO status ignored for now
+            let _status = split.next().unwrap();
+
+            // Build full name
+            let mut fullname = OsString::new();
+            fullname.push(&name);
+            fullname.push("-");
+            fullname.push(&version);
+            fullname.push(":");
+            fullname.push(&arch);
 
             // Get modification time
             mtime = Some(
@@ -60,10 +68,10 @@ pub fn dpkg_query(debug: u8) -> Result<(Vec<OsString>, Vec<PackageFile>), Box<dy
             );
 
             // Get checksums
-            csums = dpkgcsums(&name, debug);
+            csums = dpkgcsums(&fullname, debug);
 
             // Add to package list
-            packages.push(name);
+            packages.push(Package::new(fullname, name, version, Some(arch)));
 
             in_files = true;
         } else {
@@ -80,14 +88,14 @@ pub fn dpkg_query(debug: u8) -> Result<(Vec<OsString>, Vec<PackageFile>), Box<dy
                 }
 
                 // Add file
-                files.push(PackageFile {
-                    path: PathBuf::from(line),
-                    package: Some(packages.len() - 1),
-                    size: None,
-                    mode: None,
+                files.push(PackageFile::new(
+                    PathBuf::from(line),
+                    Some(packages.len() - 1),
+                    None,
+                    None,
                     chksum,
-                    time: mtime,
-                });
+                    mtime,
+                ));
             }
         }
     }

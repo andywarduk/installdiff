@@ -1,14 +1,14 @@
-use std::{error::Error, ffi::OsString, process::Command};
+use std::{error::Error, process::Command};
 
 use rpmdump::get_rpm_dump;
 use rpmlist::get_rpm_list;
 
-use super::PackageFile;
+use super::LoadResult;
 
 mod rpmdump;
 mod rpmlist;
 
-pub fn load_rpm(debug: u8) -> Result<(Vec<OsString>, Vec<PackageFile>), Box<dyn Error>> {
+pub fn load_rpm(debug: u8) -> Result<LoadResult, Box<dyn Error>> {
     // Get list of RPMs
     let rpms = get_rpm_list(debug)?;
 
@@ -21,7 +21,7 @@ pub fn load_rpm(debug: u8) -> Result<(Vec<OsString>, Vec<PackageFile>), Box<dyn 
 
     for (rpm_elem, rpm) in rpms.iter().enumerate() {
         if debug > 1 {
-            eprintln!("Loading {}", rpm.to_string_lossy());
+            eprintln!("Loading {}", rpm.name_arch());
         }
 
         let this_rpm_files = get_rpm_dump(rpm, rpm_elem)?;
@@ -30,7 +30,7 @@ pub fn load_rpm(debug: u8) -> Result<(Vec<OsString>, Vec<PackageFile>), Box<dyn 
             eprintln!(
                 "{} files found in {}",
                 this_rpm_files.len(),
-                rpm.to_string_lossy()
+                rpm.name_arch()
             );
         }
 
@@ -41,7 +41,10 @@ pub fn load_rpm(debug: u8) -> Result<(Vec<OsString>, Vec<PackageFile>), Box<dyn 
         eprintln!("{} files found", rpm_files.len());
     }
 
-    Ok((rpms, rpm_files))
+    // Default ignores for RPM systems
+    let ignores = vec!["/usr/share/man/*".into(), "/var/lib/rpm/*".into()];
+
+    Ok((rpms, rpm_files, ignores))
 }
 
 pub fn rpm_available() -> bool {

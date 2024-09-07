@@ -1,5 +1,7 @@
 use std::path::{Path, PathBuf};
 
+use regex::Regex;
+
 use crate::packageman::{PackageDb, PackageFile};
 
 pub enum ReportItem {
@@ -58,27 +60,33 @@ pub struct New {
 }
 
 pub struct Report {
+    ignores: Vec<Regex>,
     reports: Vec<ReportItem>,
 }
 
 impl Report {
-    pub fn new() -> Self {
+    pub fn new(ignores: Vec<Regex>) -> Self {
         Self {
+            ignores,
             reports: Vec::new(),
         }
     }
 
     pub fn add_missing(&mut self, packagedb: &PackageDb, file: &PackageFile) {
         self.reports.push(ReportItem::Missing(Missing {
-            path: file.path.clone(),
-            rpm: packagedb.package_to_string(file.package).to_string(),
+            path: PathBuf::from(file.path()),
+            rpm: packagedb
+                .package_to_string(*file.package(), false)
+                .to_string(),
         }))
     }
 
     pub fn add_change(&mut self, packagedb: &PackageDb, file: &PackageFile, desc: String) {
         self.reports.push(ReportItem::Changed(Changed {
-            path: file.path.clone(),
-            rpm: packagedb.package_to_string(file.package).to_string(),
+            path: PathBuf::from(file.path()),
+            rpm: packagedb
+                .package_to_string(*file.package(), false)
+                .to_string(),
             desc,
         }))
     }
@@ -91,9 +99,17 @@ impl Report {
         self.reports.sort_by(|a, b| a.path().cmp(b.path()))
     }
 
-    pub fn print(&self) {
+    pub fn print(&self, debug: u8) {
         for rep in &self.reports {
-            println!("{rep}");
+            if !self
+                .ignores
+                .iter()
+                .any(|ignore| ignore.is_match(&rep.path().to_string_lossy()))
+            {
+                println!("{rep}");
+            } else if debug > 1 {
+                eprintln!("{} filtered out by regex", rep.path().to_string_lossy());
+            }
         }
     }
 }
