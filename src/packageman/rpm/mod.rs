@@ -42,7 +42,10 @@ pub fn load_rpm(debug: u8) -> Result<LoadResult, Box<dyn Error>> {
     }
 
     // Default ignores for RPM systems
-    let ignores = vec!["/usr/share/man/*".into(), "/var/lib/rpm/*".into()];
+    let ignores = vec![
+        "^/usr/share/man($|/.*)".into(),
+        "^/var/lib/rpm($|/.*)".into(),
+    ];
 
     Ok((rpms, rpm_files, ignores))
 }

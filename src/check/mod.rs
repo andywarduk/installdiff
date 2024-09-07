@@ -8,21 +8,22 @@ mod new;
 mod report;
 mod verify;
 
-pub struct CheckArgs<'a> {
+pub struct CheckArgs {
     pub changed: bool,
     pub missing: bool,
     pub new: bool,
     pub checksum: bool,
-    pub ignores: &'a Vec<String>,
+    pub ignores: Vec<String>,
     pub debug: u8,
 }
 
-const GLOBAL_IGNORES: [&str; 5] = [
-    "/etc/pki/ca-trust/extracted/*",
-    "/var/log/*",
-    "/var/cache/*",
-    "/var/tmp/*",
-    "*/__py_cache__",
+const GLOBAL_IGNORES: [&str; 6] = [
+    "^/etc/pki/ca-trust/extracted($|/.*)",
+    "^/tmp($|/.*)",
+    "^/var/log($|/.*)",
+    "^/var/cache($|/.*)",
+    "^/var/tmp($|/.*)",
+    ".*?/__pycache__($|/.*)",
 ];
 
 pub fn check(packagedb: &PackageDb, args: CheckArgs) {
@@ -32,6 +33,8 @@ pub fn check(packagedb: &PackageDb, args: CheckArgs) {
     let mut add_ignore = |ignore| {
         if let Ok(regex) = Regex::new(ignore) {
             ignores.push(regex);
+        } else {
+            eprintln!("ERROR: Failed to compile regex '{}'", ignore);
         }
     };
 
@@ -43,7 +46,7 @@ pub fn check(packagedb: &PackageDb, args: CheckArgs) {
         add_ignore(ignore);
     }
 
-    for ignore in args.ignores {
+    for ignore in &args.ignores {
         add_ignore(ignore);
     }
 

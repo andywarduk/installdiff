@@ -1,6 +1,7 @@
 use check::{check, CheckArgs};
 use clap::{ArgAction, Parser, Subcommand};
 use packageman::{PackageDb, PackageMgr};
+use regex::{escape, Regex};
 use std::{borrow::Cow, error::Error};
 
 mod check;
@@ -35,23 +36,31 @@ enum Commands {
 struct Check {
     /// Don't report changed files
     #[arg(short = 'c', long)]
-    nochanged: bool,
+    no_changed: bool,
 
     /// Don't report missing files
     #[arg(short = 'm', long)]
-    nomissing: bool,
+    no_missing: bool,
 
     /// Don't report new files
     #[arg(short = 'n', long)]
-    nonew: bool,
+    no_new: bool,
 
-    /// Check file checksums
+    /// Verify file checksums
     #[arg(short = 's', long)]
     checksum: bool,
 
-    /// Ignore files matching pattern
+    /// Ignore directory
     #[clap(short = 'i', long)]
-    pub ignore: Vec<String>,
+    pub ignore_dir: Vec<String>,
+
+    /// Ignore file
+    #[clap(short = 'I', long)]
+    pub ignore_file: Vec<String>,
+
+    /// Ignore files matching regular expression
+    #[clap(short = 'r', long, value_parser = validate_regex)]
+    pub ignore_regex: Vec<String>,
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -95,15 +104,34 @@ fn main() -> Result<(), Box<dyn Error>> {
             // Load package database
             let packagedb = load_packages(&cli)?;
 
+            // Build ignore regular expression list
+            let ignores = checkargs
+                .ignore_regex
+                .iter()
+                .cloned()
+                .chain(
+                    checkargs
+                        .ignore_dir
+                        .iter()
+                        .map(|dir| format!("^{}($|/.*)", escape(dir))),
+                )
+                .chain(
+                    checkargs
+                        .ignore_file
+                        .iter()
+                        .map(|file| format!("^{}$", escape(file))),
+                )
+                .collect::<Vec<_>>();
+
             // Report differences
             check(
                 &packagedb,
                 CheckArgs {
-                    changed: !checkargs.nochanged,
-                    missing: !checkargs.nomissing,
-                    new: !checkargs.nonew,
+                    changed: !checkargs.no_changed,
+                    missing: !checkargs.no_missing,
+                    new: !checkargs.no_new,
                     checksum: checkargs.checksum,
-                    ignores: &checkargs.ignore,
+                    ignores,
                     debug: cli.debug,
                 },
             );
@@ -120,4 +148,8 @@ fn load_packages(cli: &Cli) -> Result<PackageDb, Box<dyn Error>> {
     };
 
     PackageDb::load(mgr, cli.debug)
+}
+
+fn validate_regex(s: &str) -> Result<String, regex::Error> {
+    Regex::new(s).map(|_| s.to_string())
 }

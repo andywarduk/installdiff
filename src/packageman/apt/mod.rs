@@ -11,7 +11,10 @@ pub fn load_apt(debug: u8) -> Result<LoadResult, Box<dyn Error>> {
     let (packages, files) = dpkg_query(debug)?;
 
     // Default ignores for apt systems
-    let ignores = vec!["/var/lib/apt/*".into(), "/var/lib/dpkg/*".into()];
+    let ignores = vec![
+        "^/var/lib/apt($|/.*)".into(),
+        "^/var/lib/dpkg($|/.*)".into(),
+    ];
 
     Ok((packages, files, ignores))
 }
