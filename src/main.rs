@@ -79,8 +79,16 @@ fn main() -> Result<(), Box<dyn Error>> {
             // Load package database
             let packagedb = load_packages(&cli)?;
 
-            for package in packagedb.packages() {
-                println!("{}", package.name_arch())
+            // Sort in to full name order
+            let mut packages = packagedb
+                .packages()
+                .map(|p| p.name_arch())
+                .collect::<Vec<_>>();
+
+            packages.sort();
+
+            for package in packages {
+                println!("{}", package)
             }
         }
         Commands::Files => {
