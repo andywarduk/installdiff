@@ -79,7 +79,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             // Load package database
             let packagedb = load_packages(&cli)?;
 
-            // Sort in to full name order
+            // Sort in to name:arch order
             let mut packages = packagedb
                 .packages()
                 .map(|p| p.name_arch())
@@ -87,6 +87,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
             packages.sort();
 
+            // Print package list
             for package in packages {
                 println!("{}", package)
             }
