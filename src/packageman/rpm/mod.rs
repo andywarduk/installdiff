@@ -1,4 +1,5 @@
-use std::{error::Error, process::Command};
+use rayon::prelude::*;
+use std::{error::Error, process::Command, sync::Mutex};
 
 use rpmdump::get_rpm_dump;
 use rpmlist::get_rpm_list;
@@ -17,25 +18,39 @@ pub fn load_rpm(debug: u8) -> Result<LoadResult, Box<dyn Error>> {
         eprintln!("Getting RPM file list");
     }
 
-    let mut rpm_files = Vec::new();
+    let rpm_files_mutex = Mutex::new(Vec::new());
 
-    for (rpm_elem, rpm) in rpms.iter().enumerate() {
+    rpms.par_iter().enumerate().for_each(|(rpm_elem, rpm)| {
         if debug > 1 {
             eprintln!("Loading {}", rpm.name_arch());
         }
 
-        let this_rpm_files = get_rpm_dump(rpm, rpm_elem)?;
+        // Get RPM contents
+        match get_rpm_dump(rpm, rpm_elem) {
+            Ok(this_rpm_files) => {
+                if debug > 1 {
+                    eprintln!(
+                        "{} files found in {}",
+                        this_rpm_files.len(),
+                        rpm.name_arch()
+                    );
+                }
 
-        if debug > 1 {
-            eprintln!(
-                "{} files found in {}",
-                this_rpm_files.len(),
-                rpm.name_arch()
-            );
+                // Add to rpm files vector
+                let mut rpm_files = rpm_files_mutex.lock().unwrap();
+
+                rpm_files.extend(this_rpm_files);
+
+                drop(rpm_files);
+            }
+            Err(e) => eprintln!(
+                "ERROR: Failed to get RPM file list for {}: {e}",
+                rpm.fullnamestr()
+            ),
         }
+    });
 
-        rpm_files.extend(this_rpm_files);
-    }
+    let rpm_files = rpm_files_mutex.into_inner().unwrap();
 
     if debug > 0 {
         eprintln!("{} files found", rpm_files.len());
