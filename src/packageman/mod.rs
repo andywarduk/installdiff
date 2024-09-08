@@ -134,16 +134,16 @@ impl PackageDb {
         }
     }
 
-    pub fn packages<'a>(&'a self) -> Box<dyn Iterator<Item = &'a Package> + 'a> {
-        Box::new(self.packages.iter())
+    pub fn packages(&self) -> impl Iterator<Item = &Package> {
+        self.packages.iter()
     }
 
-    pub fn files<'a>(&'a self) -> Box<dyn Iterator<Item = &'a PackageFile> + 'a> {
-        Box::new(self.files.iter())
+    pub fn files(&self) -> impl Iterator<Item = &PackageFile> {
+        self.files.iter()
     }
 
-    pub fn ignores<'a>(&'a self) -> Box<dyn Iterator<Item = &'a String> + 'a> {
-        Box::new(self.ignores.iter())
+    pub fn ignores(&self) -> impl Iterator<Item = &String> {
+        self.ignores.iter()
     }
 
     pub fn package_to_string(&self, idx: Option<usize>, with_version: bool) -> String {
