@@ -30,23 +30,8 @@ impl Package {
         &self.fullname
     }
 
-    pub fn fullnamestr(&self) -> Cow<str> {
+    pub fn fullnamestr(&self) -> Cow<'_, str> {
         self.fullname.to_string_lossy()
-    }
-
-    pub fn namestr(&self) -> Cow<str> {
-        self.name.to_string_lossy()
-    }
-
-    pub fn versionstr(&self) -> Cow<str> {
-        self.version.to_string_lossy()
-    }
-
-    pub fn archstr(&self) -> Cow<str> {
-        match &self.arch {
-            Some(arch) => arch.to_string_lossy(),
-            None => Cow::Borrowed(""),
-        }
     }
 
     pub fn name_arch(&self) -> String {
